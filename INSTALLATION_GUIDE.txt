@@ -1,0 +1,356 @@
+═══════════════════════════════════════════════════════════════════════════
+   INSTALLATION GUIDE: DeepSeek-VL2 ON NVIDIA JETSON
+═══════════════════════════════════════════════════════════════════════════
+
+📅 Date: December 26, 2024
+👤 Author: Azamat Armanuly
+🎯 Goal: Run local vision-language model on Jetson devices
+
+═══════════════════════════════════════════════════════════════════════════
+PART 1: SYSTEM PREPARATION
+═══════════════════════════════════════════════════════════════════════════
+
+1.1 CHECK JETSON SETUP
+----------------------
+Ensure you have JetPack 5.0 or higher installed:
+
+    sudo apt-cache show nvidia-jetpack
+
+Should display version 5.x or 6.x
+
+
+1.2 INSTALL PYTHON DEPENDENCIES
+--------------------------------
+Update pip and install base libraries:
+
+    sudo apt update
+    sudo apt install python3-pip python3-dev
+    pip3 install --upgrade pip
+
+
+1.3 INSTALL PYTORCH FOR JETSON
+-------------------------------
+IMPORTANT! Use NVIDIA official wheel files for Jetson:
+
+    # For JetPack 5.x
+    wget https://nvidia.box.com/shared/static/mp164asf3sceb570wvjsrezk1p4ftj8t.whl -O torch-2.0.0-cp38-cp38-linux_aarch64.whl
+    pip3 install torch-2.0.0-cp38-cp38-linux_aarch64.whl
+
+    # Or use pip (may not work on some versions)
+    pip3 install torch torchvision
+
+
+1.4 INSTALL OTHER DEPENDENCIES
+-------------------------------
+    pip3 install transformers accelerate pillow opencv-python huggingface-hub
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 2: DOWNLOAD MODEL
+═══════════════════════════════════════════════════════════════════════════
+
+2.1 CLONE DeepSeek-VL2 REPOSITORY
+----------------------------------
+    cd /home/jetson
+    git clone https://github.com/deepseek-ai/DeepSeek-VL2.git
+    cd DeepSeek-VL2
+
+
+2.2 INSTALL DeepSeek-VL2 AS PYTHON PACKAGE
+-------------------------------------------
+    pip3 install -e .
+
+This will install the deepseek_vl2 module locally.
+
+
+2.3 DOWNLOAD MODEL WEIGHTS
+---------------------------
+There are TWO methods:
+
+METHOD A: Via Hugging Face CLI (recommended)
+---------------------------------------------
+    # Install HF CLI
+    pip3 install huggingface-hub
+
+    # Download model
+    huggingface-cli download deepseek-ai/deepseek-vl2-tiny \
+        --local-dir /home/jetson/DeepSeek-VL2/deepseek-vl2-tiny
+
+METHOD B: Manually via browser
+-------------------------------
+1. Go to: https://huggingface.co/deepseek-ai/deepseek-vl2-tiny
+2. Click "Files and versions"
+3. Download all files to folder:
+   /home/jetson/DeepSeek-VL2/deepseek-vl2-tiny
+
+
+2.4 FIND SNAPSHOT PATH
+-----------------------
+After downloading, model is saved in snapshot folder:
+
+    ls /home/jetson/DeepSeek-VL2/deepseek-vl2-tiny/models--deepseek-ai--deepseek-vl2-tiny/snapshots/
+
+Remember the ID (example: 66c54660eae7e90c9ba259bfdf92d07d6e3ce8aa)
+
+Full path will be:
+/home/jetson/DeepSeek-VL2/deepseek-vl2-tiny/models--deepseek-ai--deepseek-vl2-tiny/snapshots/66c54660eae7e90c9ba259bfdf92d07d6e3ce8aa
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 3: PROJECT INSTALLATION
+═══════════════════════════════════════════════════════════════════════════
+
+3.1 CLONE REPOSITORY
+---------------------
+    cd /home/jetson
+    git clone https://github.com/aza9908/innovation_project.git
+    cd innovation_project
+
+
+3.2 EDIT MODEL PATH
+-------------------
+Open deepseek_local.py file:
+
+    nano deepseek_local.py
+
+Find the line:
+
+    MODEL_PATH = "/home/jetson/DeepSeek-VL2/..."
+
+Replace with your snapshot path (from step 2.4):
+
+    MODEL_PATH = "/home/jetson/DeepSeek-VL2/deepseek-vl2-tiny/models--deepseek-ai--deepseek-vl2-tiny/snapshots/YOUR_SNAPSHOT_ID"
+
+Save (Ctrl+O, Enter, Ctrl+X)
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 4: TESTING
+═══════════════════════════════════════════════════════════════════════════
+
+4.1 CHECK CAMERA
+----------------
+First, verify your camera works:
+
+    python3 test_cam.py
+
+Expected result:
+- File test.jpg should appear
+- Message "Image saved as test.jpg"
+
+If error "Camera not opened":
+    # Check camera devices
+    ls /dev/video*
+    
+    # Try different index
+    # In test_cam.py change: cv2.VideoCapture(0) to cv2.VideoCapture(1)
+
+
+4.2 RUN IMAGE ANALYSIS
+----------------------
+Now run the main script:
+
+    python3 deepseek_local.py test.jpg
+
+What will happen:
+1. Model loading (~1-2 minutes)
+2. Image processing (~3-10 seconds depending on Jetson)
+3. Image description output
+
+
+4.3 EXPECTED OUTPUT
+-------------------
+    🚀 Loading model from /home/jetson/DeepSeek-VL2/...
+    🔧 Device: cuda | Dtype: torch.float16
+    ✅ Successfully imported deepseek_vl2 modules.
+    ✅ Found Model Class: DeepseekVLV2ForCausalLM
+    ⏳ Loading model weights (this may take a moment)...
+    ✨ Analyzing image...
+    
+    📸 Image Description:
+    ----------------------------------------
+    The image shows a person holding a camera...
+    ----------------------------------------
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 5: TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════
+
+PROBLEM 1: CUDA OUT OF MEMORY
+------------------------------
+Symptoms: RuntimeError: CUDA out of memory
+
+Solution A - Close other programs:
+    sudo systemctl stop docker
+    sudo killall chromium-browser
+
+Solution B - Add SWAP memory:
+    sudo systemctl disable nvzramconfig
+    sudo fallocate -l 4G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+
+PROBLEM 2: MODULE NOT FOUND: deepseek_vl2
+------------------------------------------
+Symptoms: ImportError: No module named 'deepseek_vl2'
+
+Solution:
+    cd /home/jetson/DeepSeek-VL2
+    pip3 install -e .
+    
+Check:
+    python3 -c "import deepseek_vl2; print('OK')"
+
+
+PROBLEM 3: INPUT TYPE AND BIAS TYPE ERROR
+------------------------------------------
+Symptoms: RuntimeError: Input type (BFloat16) and bias type (Half)...
+
+Solution: ALREADY FIXED in deepseek_local.py
+(Line: prepare_inputs.pixel_values = prepare_inputs.pixel_values.to(dtype=compute_dtype))
+
+
+PROBLEM 4: CAMERA NOT OPENED
+-----------------------------
+Symptoms: "Camera not opened" in test_cam.py
+
+Solution A - Check USB camera:
+    ls /dev/video*
+    v4l2-ctl --list-devices
+
+Solution B - Permissions:
+    sudo usermod -a -G video $USER
+    # Re-login to system
+
+Solution C - For CSI camera (not USB):
+    # Use GStreamer pipeline instead of cv2.VideoCapture(0)
+    # This requires modification of test_cam.py
+
+
+PROBLEM 5: SLOW MODEL LOADING
+------------------------------
+Symptoms: Model loads for 5+ minutes
+
+This is NORMAL for first run!
+- Jetson Nano: 5-10 minutes
+- Jetson Xavier NX: 2-5 minutes  
+- Jetson Orin: 1-2 minutes
+
+Next runs will be faster thanks to cache.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 6: ADVANCED USAGE
+═══════════════════════════════════════════════════════════════════════════
+
+6.1 CREATE AUTO-START SCRIPT
+-----------------------------
+Create systemd service for auto-start at boot:
+
+    sudo nano /etc/systemd/system/deepseek-cam.service
+
+Contents:
+    [Unit]
+    Description=DeepSeek Camera Service
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=jetson
+    WorkingDirectory=/home/jetson/innovation_project
+    ExecStart=/usr/bin/python3 /home/jetson/innovation_project/deepseek_local.py
+    Restart=on-failure
+
+    [Install]
+    WantedBy=multi-user.target
+
+Activate:
+    sudo systemctl daemon-reload
+    sudo systemctl enable deepseek-cam.service
+    sudo systemctl start deepseek-cam.service
+
+
+6.2 PERFORMANCE MONITORING
+---------------------------
+Install jtop for Jetson monitoring:
+
+    sudo pip3 install jetson-stats
+    sudo jtop
+
+Shows:
+- GPU usage
+- CPU usage  
+- Memory usage
+- Temperature
+- Power consumption
+
+
+6.3 BATCH IMAGE PROCESSING
+---------------------------
+Create script to process folder of images:
+
+    import os
+    from deepseek_local import describe_image
+    
+    image_dir = "/home/jetson/images"
+    for img_file in os.listdir(image_dir):
+        if img_file.endswith(('.jpg', '.png')):
+            img_path = os.path.join(image_dir, img_file)
+            print(f"Processing {img_file}...")
+            describe_image([img_path])
+
+
+═══════════════════════════════════════════════════════════════════════════
+PART 7: PERFORMANCE OPTIMIZATION
+═══════════════════════════════════════════════════════════════════════════
+
+7.1 ENABLE MAXIMUM PERFORMANCE
+-------------------------------
+    sudo nvpmodel -m 0  # Maximum mode
+    sudo jetson_clocks   # Maximum frequencies
+
+
+7.2 REDUCE CAMERA RESOLUTION
+-----------------------------
+In test_cam.py add:
+
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+
+7.3 USE QUANTIZATION
+---------------------
+For even better speed (requires modification):
+
+    from transformers import BitsAndBytesConfig
+    
+    quantization_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16
+    )
+
+
+═══════════════════════════════════════════════════════════════════════════
+ADDITIONAL INFORMATION
+═══════════════════════════════════════════════════════════════════════════
+
+📚 Useful Links:
+- DeepSeek-VL2 GitHub: https://github.com/deepseek-ai/DeepSeek-VL2
+- Jetson Zoo (ready models): https://elinux.org/Jetson_Zoo
+- NVIDIA Developer Forum: https://forums.developer.nvidia.com/c/agx-autonomous-machines/jetson-embedded-systems
+
+💬 Support:
+- GitHub Issues: https://github.com/aza9908/innovation_project/issues
+
+✍️ Author:
+Azamat Armanuly
+GitHub: @aza9908
+
+═══════════════════════════════════════════════════════════════════════════
+END OF GUIDE
+═══════════════════════════════════════════════════════════════════════════
